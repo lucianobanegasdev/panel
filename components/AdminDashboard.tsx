@@ -5,6 +5,7 @@ import {
   Activity,
   Building2,
   Laptop,
+  Loader2,
   LogOut,
   PauseCircle,
   PlayCircle,
@@ -12,6 +13,7 @@ import {
   Rocket,
   Send,
   Trash2,
+  Upload,
 } from 'lucide-react'
 import {
   assignReleaseToAllTenants,
@@ -165,6 +167,8 @@ export default function AdminDashboard({
   const [releaseError, setReleaseError] = useState<string | null>(null)
   const [tenantReleaseSelection, setTenantReleaseSelection] = useState<Record<string, string>>({})
   const [isPending, startTransition] = useTransition()
+  const [isUploading, setIsUploading] = useState(false)
+  const [uploadError, setUploadError] = useState<string | null>(null)
 
   const latestLicenseByTenant = useMemo(() => {
     return licenses.reduce<Record<string, License>>((accumulator, license) => {
@@ -244,6 +248,42 @@ export default function AdminDashboard({
 
       window.location.reload()
     })
+  }
+
+  const handleUploadRelease = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    setIsUploading(true)
+    setUploadError(null)
+
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+
+      const response = await fetch('/api/upload-release', {
+        method: 'POST',
+        body: formData,
+      })
+
+      const result = await response.json()
+
+      if (!response.ok || !result.success) {
+        setUploadError(result.error || 'Error al subir el archivo.')
+        return
+      }
+
+      setReleaseForm(current => ({
+        ...current,
+        artifactUrl: result.url,
+        artifactSizeBytes: String(result.sizeBytes ?? ''),
+      }))
+    } catch {
+      setUploadError('Error de conexión al subir el archivo.')
+    } finally {
+      setIsUploading(false)
+      if (event.target) event.target.value = ''
+    }
   }
 
   const tabs: Array<{ id: TabId; label: string; icon: React.ComponentType<{ size?: number }> }> = [
@@ -688,12 +728,83 @@ export default function AdminDashboard({
                   placeholder="Tamaño del artefacto"
                   style={inputStyle()}
                 />
-                <input
-                  value={releaseForm.artifactUrl}
-                  onChange={event => setReleaseForm(current => ({ ...current, artifactUrl: event.target.value }))}
-                  placeholder="URL del artefacto"
-                  style={{ ...inputStyle(), gridColumn: '1 / -1' }}
-                />
+                <div style={{ gridColumn: '1 / -1', display: 'grid', gap: 10 }}>
+                  <div style={{ display: 'flex', gap: 10 }}>
+                    <input
+                      value={releaseForm.artifactUrl}
+                      onChange={event =>
+                        setReleaseForm(current => ({ ...current, artifactUrl: event.target.value }))
+                      }
+                      placeholder="URL del artefacto"
+                      style={{ ...inputStyle(), flex: 1 }}
+                    />
+                    <label
+                      style={{
+                        ...primaryButtonStyle(),
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 8,
+                        padding: '0 18px',
+                        cursor: isUploading ? 'not-allowed' : 'pointer',
+                        opacity: isUploading ? 0.6 : 1,
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {isUploading ? (
+                        <>
+                          <Loader2
+                            size={16}
+                            style={{
+                              animation: 'spin 1s linear infinite',
+                            }}
+                          />
+                          Subiendo...
+                        </>
+                      ) : (
+                        <>
+                          <Upload size={16} />
+                          Subir .exe
+                        </>
+                      )}
+                      <input
+                        type="file"
+                        accept=".exe"
+                        onChange={handleUploadRelease}
+                        disabled={isUploading}
+                        style={{ display: 'none' }}
+                      />
+                    </label>
+                  </div>
+                  {uploadError && (
+                    <div
+                      style={{
+                        borderRadius: 12,
+                        border: '1px solid rgba(248,113,113,0.25)',
+                        backgroundColor: 'rgba(248,113,113,0.12)',
+                        color: '#fecaca',
+                        padding: '10px 14px',
+                        fontSize: 13,
+                      }}
+                    >
+                      {uploadError}
+                    </div>
+                  )}
+                  {releaseForm.artifactUrl && !uploadError && (
+                    <div
+                      style={{
+                        borderRadius: 12,
+                        border: '1px solid rgba(52,211,153,0.25)',
+                        backgroundColor: 'rgba(52,211,153,0.08)',
+                        color: '#a7f3d0',
+                        padding: '8px 14px',
+                        fontSize: 12,
+                        wordBreak: 'break-all',
+                      }}
+                    >
+                      URL: {releaseForm.artifactUrl}
+                    </div>
+                  )}
+                </div>
                 <input
                   value={releaseForm.artifactSignature}
                   onChange={event =>
