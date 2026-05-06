@@ -23,13 +23,13 @@ import {
   createTenant,
   deleteTenant,
   DesktopRelease,
+  getReleaseUploadSignedUrl,
   License,
   setLicenseStatus,
   Tenant,
   TenantDevice,
   TenantReleaseAssignment,
   toggleTenantStatus,
-  uploadReleaseArtifact,
 } from '@/app/actions'
 import { logoutAdmin } from '@/app/login/actions'
 
@@ -259,20 +259,30 @@ export default function AdminDashboard({
     setUploadError(null)
 
     try {
-      const formData = new FormData()
-      formData.append('file', file)
+      const signedResult = await getReleaseUploadSignedUrl(file.name)
 
-      const result = await uploadReleaseArtifact(formData)
+      if (!signedResult.success || !signedResult.signedUrl) {
+        setUploadError(signedResult.error || 'Error al preparar la subida.')
+        return
+      }
 
-      if (!result.success) {
-        setUploadError(result.error || 'Error al subir el archivo.')
+      const uploadResponse = await fetch(signedResult.signedUrl, {
+        method: 'PUT',
+        body: file,
+        headers: {
+          'Content-Type': 'application/vnd.microsoft.portable-executable',
+        },
+      })
+
+      if (!uploadResponse.ok) {
+        setUploadError('Error al subir el archivo a Supabase Storage.')
         return
       }
 
       setReleaseForm(current => ({
         ...current,
-        artifactUrl: result.url ?? '',
-        artifactSizeBytes: String(result.sizeBytes ?? ''),
+        artifactUrl: signedResult.publicUrl ?? '',
+        artifactSizeBytes: String(file.size),
       }))
     } catch {
       setUploadError('Error de conexión al subir el archivo.')

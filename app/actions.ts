@@ -124,9 +124,9 @@ export async function createTenant(input: { name: string; subdomain: string }): 
 
 export interface UploadReleaseResult {
   success: boolean
-  url?: string
+  signedUrl?: string
+  publicUrl?: string
   fileName?: string
-  sizeBytes?: number
   error?: string
 }
 
@@ -156,51 +156,37 @@ async function ensureReleasesBucket() {
   }
 }
 
-export async function uploadReleaseArtifact(formData: FormData): Promise<UploadReleaseResult> {
+export async function getReleaseUploadSignedUrl(fileName: string): Promise<UploadReleaseResult> {
   await requireSuperAdminSession()
 
   try {
     await ensureReleasesBucket()
     const supabaseAdmin = getSupabaseAdmin()
 
-    const file = formData.get('file') as File | null
+    const sanitizedName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_')
+    const storagePath = `${Date.now()}-${sanitizedName}`
 
-    if (!file) {
-      return { success: false, error: 'No se envió ningún archivo' }
-    }
-
-    if (!file.name.toLowerCase().endsWith('.exe')) {
-      return { success: false, error: 'Solo se permiten archivos .exe' }
-    }
-
-    const bytes = await file.arrayBuffer()
-    const buffer = Buffer.from(bytes)
-
-    const fileName = `${Date.now()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`
-
-    const { error } = await supabaseAdmin.storage
+    const { data, error } = await supabaseAdmin.storage
       .from(RELEASES_BUCKET)
-      .upload(fileName, buffer, {
-        contentType: 'application/vnd.microsoft.portable-executable',
-        upsert: false,
-      })
+      .createSignedUploadUrl(storagePath)
 
     if (error) {
-      return { success: false, error: `Error al subir: ${error.message}` }
+      return { success: false, error: `Error al generar URL: ${error.message}` }
     }
 
-    const { data: publicUrlData } = supabaseAdmin.storage.from(RELEASES_BUCKET).getPublicUrl(fileName)
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
+    const publicUrl = `${supabaseUrl}/storage/v1/object/public/${RELEASES_BUCKET}/${storagePath}`
 
     return {
       success: true,
-      url: publicUrlData.publicUrl,
-      fileName: file.name,
-      sizeBytes: buffer.length,
+      signedUrl: data.signedUrl,
+      publicUrl,
+      fileName: storagePath,
     }
   } catch (error) {
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Error interno al subir el archivo',
+      error: error instanceof Error ? error.message : 'Error interno',
     }
   }
 }
