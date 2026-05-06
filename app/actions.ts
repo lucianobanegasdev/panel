@@ -141,7 +141,6 @@ async function ensureReleasesBucket() {
   if (!exists) {
     const { error } = await supabaseAdmin.storage.createBucket(RELEASES_BUCKET, {
       public: true,
-      fileSizeLimit: 300 * 1024 * 1024,
       allowedMimeTypes: [
         'application/vnd.microsoft.portable-executable',
         'application/x-msdownload',
