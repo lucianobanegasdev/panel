@@ -122,6 +122,89 @@ export async function createTenant(input: { name: string; subdomain: string }): 
   return { success: true }
 }
 
+export interface UploadReleaseResult {
+  success: boolean
+  url?: string
+  fileName?: string
+  sizeBytes?: number
+  error?: string
+}
+
+const RELEASES_BUCKET = 'releases'
+
+async function ensureReleasesBucket() {
+  const supabaseAdmin = getSupabaseAdmin()
+
+  const { data: buckets } = await supabaseAdmin.storage.listBuckets()
+  const exists = buckets?.some(b => b.name === RELEASES_BUCKET)
+
+  if (!exists) {
+    const { error } = await supabaseAdmin.storage.createBucket(RELEASES_BUCKET, {
+      public: true,
+      fileSizeLimit: 300 * 1024 * 1024,
+      allowedMimeTypes: [
+        'application/vnd.microsoft.portable-executable',
+        'application/x-msdownload',
+        'application/octet-stream',
+        'application/x-executable',
+      ],
+    })
+
+    if (error) {
+      throw new Error(`No se pudo crear el bucket: ${error.message}`)
+    }
+  }
+}
+
+export async function uploadReleaseArtifact(formData: FormData): Promise<UploadReleaseResult> {
+  await requireSuperAdminSession()
+
+  try {
+    await ensureReleasesBucket()
+    const supabaseAdmin = getSupabaseAdmin()
+
+    const file = formData.get('file') as File | null
+
+    if (!file) {
+      return { success: false, error: 'No se envió ningún archivo' }
+    }
+
+    if (!file.name.toLowerCase().endsWith('.exe')) {
+      return { success: false, error: 'Solo se permiten archivos .exe' }
+    }
+
+    const bytes = await file.arrayBuffer()
+    const buffer = Buffer.from(bytes)
+
+    const fileName = `${Date.now()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`
+
+    const { error } = await supabaseAdmin.storage
+      .from(RELEASES_BUCKET)
+      .upload(fileName, buffer, {
+        contentType: 'application/vnd.microsoft.portable-executable',
+        upsert: false,
+      })
+
+    if (error) {
+      return { success: false, error: `Error al subir: ${error.message}` }
+    }
+
+    const { data: publicUrlData } = supabaseAdmin.storage.from(RELEASES_BUCKET).getPublicUrl(fileName)
+
+    return {
+      success: true,
+      url: publicUrlData.publicUrl,
+      fileName: file.name,
+      sizeBytes: buffer.length,
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Error interno al subir el archivo',
+    }
+  }
+}
+
 export async function toggleTenantStatus(input: {
   tenantId: string
   currentStatus: boolean

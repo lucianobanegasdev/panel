@@ -29,6 +29,7 @@ import {
   TenantDevice,
   TenantReleaseAssignment,
   toggleTenantStatus,
+  uploadReleaseArtifact,
 } from '@/app/actions'
 import { logoutAdmin } from '@/app/login/actions'
 
@@ -261,21 +262,16 @@ export default function AdminDashboard({
       const formData = new FormData()
       formData.append('file', file)
 
-      const response = await fetch('/api/upload-release', {
-        method: 'POST',
-        body: formData,
-      })
+      const result = await uploadReleaseArtifact(formData)
 
-      const result = await response.json()
-
-      if (!response.ok || !result.success) {
+      if (!result.success) {
         setUploadError(result.error || 'Error al subir el archivo.')
         return
       }
 
       setReleaseForm(current => ({
         ...current,
-        artifactUrl: result.url,
+        artifactUrl: result.url ?? '',
         artifactSizeBytes: String(result.sizeBytes ?? ''),
       }))
     } catch {
