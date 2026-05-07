@@ -166,6 +166,7 @@ export default function AdminDashboard({
   const [tenantError, setTenantError] = useState<string | null>(null)
   const [releaseForm, setReleaseForm] = useState<CreateReleaseFormState>(initialReleaseFormState)
   const [releaseError, setReleaseError] = useState<string | null>(null)
+  const [assignmentError, setAssignmentError] = useState<string | null>(null)
   const [tenantReleaseSelection, setTenantReleaseSelection] = useState<Record<string, string>>({})
   const [isPending, startTransition] = useTransition()
   const [isUploading, setIsUploading] = useState(false)
@@ -244,6 +245,50 @@ export default function AdminDashboard({
 
       if (!result.success) {
         setReleaseError(result.error || 'No se pudo crear la release.')
+        return
+      }
+
+      window.location.reload()
+    })
+  }
+
+  const handleAssignReleaseToTenant = (tenantId: string) => {
+    setAssignmentError(null)
+
+    startTransition(async () => {
+      const releaseId = tenantReleaseSelection[tenantId]
+
+      if (!releaseId) {
+        setAssignmentError('Tenés que elegir una release antes de asignarla.')
+        return
+      }
+
+      const result = await assignReleaseToTenant({
+        tenantId,
+        releaseId,
+        isRequired: false,
+      })
+
+      if (!result.success) {
+        setAssignmentError(result.error || 'No se pudo asignar la release al tenant.')
+        return
+      }
+
+      window.location.reload()
+    })
+  }
+
+  const handleAssignReleaseToAllTenants = (releaseId: string, isRequired: boolean) => {
+    setAssignmentError(null)
+
+    startTransition(async () => {
+      const result = await assignReleaseToAllTenants({
+        releaseId,
+        isRequired,
+      })
+
+      if (!result.success) {
+        setAssignmentError(result.error || 'No se pudo asignar la release a todos los tenants.')
         return
       }
 
@@ -410,6 +455,20 @@ export default function AdminDashboard({
             )
           })}
         </section>
+
+        {assignmentError ? (
+          <section
+            style={{
+              ...cardStyle(),
+              padding: 18,
+              border: '1px solid rgba(248,113,113,0.28)',
+              backgroundColor: 'rgba(248,113,113,0.12)',
+              color: '#fecaca',
+            }}
+          >
+            {assignmentError}
+          </section>
+        ) : null}
 
         {activeTab === 'tenants' && (
           <section style={{ display: 'grid', gap: 20 }}>
@@ -594,22 +653,7 @@ export default function AdminDashboard({
                                   ))}
                                 </select>
                                 <button
-                                  onClick={() =>
-                                    startTransition(async () => {
-                                      const releaseId = tenantReleaseSelection[tenant.id]
-
-                                      if (!releaseId) {
-                                        return
-                                      }
-
-                                      await assignReleaseToTenant({
-                                        tenantId: tenant.id,
-                                        releaseId,
-                                        isRequired: false,
-                                      })
-                                      window.location.reload()
-                                    })
-                                  }
+                                  onClick={() => handleAssignReleaseToTenant(tenant.id)}
                                   style={ghostButtonStyle()}
                                 >
                                   <Send size={15} />
@@ -901,13 +945,7 @@ export default function AdminDashboard({
                           <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                             <button
                               onClick={() =>
-                                startTransition(async () => {
-                                  await assignReleaseToAllTenants({
-                                    releaseId: release.id,
-                                    isRequired: release.is_mandatory,
-                                  })
-                                  window.location.reload()
-                                })
+                                handleAssignReleaseToAllTenants(release.id, release.is_mandatory)
                               }
                               style={ghostButtonStyle()}
                             >
